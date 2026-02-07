@@ -1,0 +1,397 @@
+---
+title: "Homework 1"
+author: "Aldo Tapia"
+format:
+  pdf:
+    fig-pos: H
+jupyter:
+  kernelspec:
+    name: python
+    display_name: Python 3
+    language: python
+---
+
+**Note**: All the code was executed in my local machine instead of using codespaces for this task (just to run Quarto).
+
+## Problem 1: Supercomputer architecture (25 points)
+
+The top 500 supercomputers in the world are ranked based on their performance on the LINPACK benchmark, which measures a system's floating-point computing power. Visit the [Top500 website](https://www.top500.org/lists/top500/) and select one of the top 50 supercomputers. Write a short report (~0.5-1 page) that includes the following information:
+
+1. The name and location of the supercomputer.
+2. The architecture of the supercomputer (e.g., CPU type, number of cores, memory, interconnect).
+3. The peak performance of the supercomputer in FLOPS (floating-point operations per second).
+4. A brief discussion of the applications or research areas that benefit from this supercomputer's capabilities.
+
+**Report:**
+
+The supercomputer I have choosen is called Sunway TaihuLight, which is located in National Supercomputing Center in Wuxi, China. The reason I chose this supercomputer is because it caught my attention due to its fabrication year (2016). This supercomputer is top 24 in TOP500 list (updated November 2025) and it is ranked in a very high position consireding it is 10 years old (it was the World's fastest supercomputer from June 2016 to June 2018).
+
+The CPU is called Sunway SW26010, and it's composed by 260 cores orzanized in a hierchical way. The supercomputer has 40,960 nodes (each node has 256 cores for processing plus 4 cores for system management and other tasks), which gives a total of 10,649,600 CPU cores. The clock speed of the cores is 1.45 GHz, and the clock speed is related to the performance of the supercomputer, but it is not the only factor that determines its performance. The memory of the supercomputer is 1.32 PB (petabytes) of RAM, and each node has a large DDR3 block of ~256 GB/node. The DDR3 memory is described as "high bandwidth memory" and it is designed to provide high performance for data-intensive applications. The interconnect used in the Sunway TaihuLight is called Sunway Network (designed exclusively for this supercomputer), which is a high-speed interconnection that allows for fast communication between the nodes.
+
+The network is centralized by 1 management core (MPE) which control 256 computing cores (CPE), each one plays a similar role to a GPU core (this supercomputers doesn't use GPUs, but the CPEs are designed to perform similar tasks). The acceleration is achieve by a massive on-chip parallelism.
+
+A FLOPS (floating-point operations per second) is a measure of a computer's performance, especially in fields of scientific calculations that require a large number of floating-point calculations. From TOP500 website, we have two different metrics: Rmax and Rpeak. Rmax is the maximum performance achieved by the supercomputer on the LINPACK benchmark (a data-intensive benchmark that measures the performance of a system in solving a dense system of linear equations), while Rpeak is the theoretical peak performance of the supercomputer based on its hardware specifications. For Sunway TaihuLight, Rmax is 93.01 PFLOPS (petaFLOPS) and Rpeak is 125.44 PFLOPS. A common desktop computer can achieve around 100 GFLOPS (gigaFLOPS), which is 0.0001 PFLOPS, so the Sunway TaihuLight is about 930,000 times faster than a common desktop computer.
+
+The main applications that are ran in this suppercomputer are related to scientific research. For echample, Earth Sysyem Modeling, like global and local climate modilng, ocean-atmosphere interaction, and weather forecasting. Another applications are related to Fluid dynamics, Seismology, Material science and physics, among others. A summary of a few studies can be found in: Fu, H., Liao, J., Yang, J. *et al*. The Sunway TaihuLight supercomputer: system and applications. *Sci. China Inf. Sci.* **59**, 072001 (2016). [https://doi.org/10.1007/s11432-016-5588-7](https://doi.org/10.1007/s11432-016-5588-7)
+
+
+## Problem 2: Moore's Law and Linear Regression (25 points)
+Moore's Law states that the number of transistors on a microchip doubles approximately every two years, leading to an exponential increase in computing power. Using the provided historical data, given in `computational_methods_course/data/moores.csv`, perform the following tasks:
+
+1. Load the data into a pandas DataFrame.
+2. Use linear regression to model the relationship between the year and the number of transistors.
+3. Plot the original data points and the fitted regression line.
+4. Compute the doubling time of transistors based on your regression model, and compare it to the commonly cited value of two years.
+5 (for fun). Compute the same regression for the first 10 years of the data and the last 10 years of the data. Has the doubling time changed over the history of computing?
+
+**Answer:**
+
+```{python}
+#| echo: false
+#| message: false
+#| warning: false
+import pandas as pd
+from sklearn.linear_model import LinearRegression, Ridge, Lasso
+import matplotlib.pyplot as plt
+import numpy as np
+import time
+from dask import compute
+from IPython.display import Markdown
+import os
+import dask.array as da
+import dask
+
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
+os.environ["OPENBLAS_NUM_THREADS"] = "1"
+
+def rmse(y_true, y_pred):
+    return ((y_true - y_pred) ** 2).mean() ** 0.5
+
+def zscore(x):
+    return (x - np.mean(x)) / np.std(x)
+```
+
+Aproach:
+
+Let $X$ be the year and $y$ the number of transistors. The relationship can be described as:
+
+$$y = \beta_0 + \beta_1 X + \epsilon$$
+
+Where $\beta_0$ is the intercept, $\beta_1$ is the slope, and $\epsilon$ is the error term. Since the relationship of the number of transistors is exponential, we can take the logarithm of $y$ to linearize the relationship:
+
+$$\log(y) = \beta_0 + \beta_1 X + \epsilon$$
+
+Then, normalizing back to the original scale, we can express the model as:
+
+$$y = e^{\beta_0 + \beta_1 X + \epsilon}$$
+
+```{python}
+#| echo: false
+df = pd.read_csv('assets/moores.csv', skiprows=1)
+
+y = np.log(df['Transistor Count'].astype(np.float64).values).reshape(-1, 1)
+X = df['Year'].astype(np.float64).values.reshape(-1, 1)
+
+model1 = LinearRegression().fit(X,y)
+model2 = Ridge(alpha=1.0).fit(X,y)
+model3 = Lasso(alpha=1.0).fit(X,y)
+
+X2 = np.arange(1970, 2025).reshape(-1, 1)
+
+y_pred1 = model1.predict(X)
+rmse1 = rmse(y, y_pred1)
+y_pred2 = model2.predict(X)
+rmse2 = rmse(y, y_pred2)
+y_pred3 = model3.predict(X)
+rmse3 = rmse(y, y_pred3)
+```
+
+For testing the regression, I used three different models: OLS, Ridge and Lasso. The RMSE of the three models are very similar, with the OLS model having the lowest RMSE. This indicates that the OLS model is the best fit for the data, but the Ridge and Lasso models also provide a good fit. The differences are shown in the plot below with an inset zoomed in to the last 5 years of data, where the differences between the models are more evident (which are not big):
+
+```{python}
+#| echo: false
+#| message: false
+#| warning: false
+#| figure: true
+#| fig-cap: "Actual vs Predicted Transistor Count by year"
+fig, ax = plt.subplots(figsize=(10, 6))
+
+x1, x2, y1, y2 = 2020, 2024, 10**10, 10**11
+
+ax.plot(X, np.exp(y), 'o', label='Actual')
+ax.plot(X, np.exp(y_pred1), c = 'blue', alpha = 0.3, label=f'Predicted OLS. RMSE: {rmse1:.4f}')
+ax.plot(X, np.exp(y_pred2), c = 'red', alpha = 0.3, label=f'Predicted Ridge (L2). RMSE: {rmse2:.4f}')
+ax.plot(X, np.exp(y_pred3), c = 'green', alpha = 0.3, label=f'Predicted Lasso (L1). RMSE: {rmse3:.4f}')
+
+axins = ax.inset_axes([0.1, 0.4, 0.3, 0.3],
+                        xlim=(x1, x2), ylim=(y1, y2),
+                        xticks=np.arange(x1, x2+1, 2),
+                        yticks=[10**10, 10**11],
+                        yscale='log',
+                        title ='Zoomed In (2020-2024)')
+axins.plot(X, np.exp(y), 'o', label='Actual')
+axins.plot(X, np.exp(y_pred1), c = 'blue', alpha = 0.3, label=f'Predicted OLS. RMSE: {rmse1:.4f}')
+axins.plot(X, np.exp(y_pred2), c = 'red', alpha = 0.3, label=f'Predicted Ridge (L2). RMSE: {rmse2:.4f}')
+axins.plot(X, np.exp(y_pred3), c = 'green', alpha = 0.3, label=f'Predicted Lasso (L1). RMSE: {rmse3:.4f}')
+ax.set_yscale('log')
+ax.set_ylabel('Transistor Count - Log Scale')
+ax.set_xlabel('Year')
+ax.legend(loc='upper left')
+fig.show()
+```
+
+The figure is log-scaled because the number of transistors grows exponentially, and it is easier to visualize the relationship between the year and the number of transistors on a log scale. The plot shows that the number of transistors has been increasing exponentially over the years, and the fitted regression lines (OLS, Ridge, and Lasso) closely follow the actual data points. 
+
+To compute the doubling time of the number of transistors, we can use the formula:
+
+$$T_d = \frac{\ln(2)}{\beta_1}$$
+
+Where $T_d$ is the doubling time and $\beta_1$ is the slope of the linear regression model. This formula arises from the fact that the number of transistors doubles when $X$ increases by $T_d$, which can be derived from the exponential growth model.
+
+```{python}
+td = np.log(2) / model1.coef_[0][0] # OLS model
+
+print(f"The doubling time is approximately {td:.2f} years.")
+```
+
+To test if the doubling approach is working, here a small verification:
+
+```{python}
+y_test = model1.predict([[1980],[1980 + td]])
+multiplier_factor = np.exp(y_test[1][0]) / np.exp(y_test[0][0])
+
+print(f"Empirically, the multiplier factor" +
+      f" after {td:.2f} years is approximately " +
+      f"{multiplier_factor:.2f}.")
+```
+
+Then, we can compute the regression for the first 10 years of data and the last 10 years of data to see if the doubling time has changed over the history of computing:
+
+```{python}
+first_year, last_year = X.min(), X.max()
+Xfirst = X[(X >= first_year) & (X <= first_year + 9)].reshape(-1, 1)
+yfirst = y[(X >= first_year) & (X <= first_year + 9)]
+Xlast = X[(X >= last_year - 9) & (X <= last_year)].reshape(-1, 1)
+ylast = y[(X >= last_year - 9) & (X <= last_year)]
+
+model_first = LinearRegression(fit_intercept=True).fit(Xfirst, yfirst)
+model_last = LinearRegression(fit_intercept=True).fit(Xlast, ylast)
+
+td_first = np.log(2) / model_first.coef_[0]
+td_last = np.log(2) / model_last.coef_[0]
+
+print(f"Doubling time in the first 10 years: {td_first:.2f} years.")
+print(f"Doubling time in the last 10 years: {td_last:.2f} years.")
+```
+
+This can be shown in the plot below, where the doubling time is represented by the slope of the regression line. The steeper the slope, the shorter the doubling time.
+
+```{python}
+#| echo: false
+#| message: false
+#| warning: false
+#| figure: true
+#| fig-cap: "Actual vs Predicted Transistor Count by year for the first and last 10 years"
+fig, ax = plt.subplots(figsize=(10, 6))
+ax.plot(Xfirst, np.exp(yfirst), 'o', label='Actual (First 10 Years)')
+ax.plot(Xfirst, np.exp(model_first.predict(Xfirst)), c = 'blue', alpha = 0.3, label=f'Predicted (First 10 Years). Doubling Time: {td_first:.2f} years')
+ax.plot(Xlast, np.exp(ylast), 'o', label='Actual (Last 10 Years)')
+ax.plot(Xlast, np.exp(model_last.predict(Xlast)), c = 'red', alpha = 0.3, label=f'Predicted (Last 10 Years). Doubling Time: {td_last:.2f} years')
+ax.set_yscale('log')
+ax.set_ylabel('Transistor Count - Log Scale')
+ax.set_xlabel('Year')
+ax.legend()
+fig.show()  
+```
+
+In both cases, the doubling time is similar. I see there are some outliers. The same procedure but removing outliers (defined as points with a residual greater than 2 standard deviations):
+
+```{python}
+#| echo: false
+#| message: false
+#| warning: false
+#| figure: true
+#| fig-cap: "Actual vs Predicted Transistor Count by year for the first and last 10 years (Outliers Removed)"
+yfirst_zscored = np.abs(zscore(yfirst))
+ylast_zscored = np.abs(zscore(ylast))
+
+threshold = 2.0
+
+Xfirst_filtered = Xfirst[yfirst_zscored < threshold]
+yfirst_filtered = yfirst[yfirst_zscored < threshold]
+
+Xlast_filtered = Xlast[ylast_zscored < threshold]
+ylast_filtered = ylast[ylast_zscored < threshold]
+
+model_first_filtered = LinearRegression(fit_intercept=True).fit(Xfirst_filtered, yfirst_filtered)
+model_last_filtered = LinearRegression(fit_intercept=True).fit(Xlast_filtered, ylast_filtered)
+
+td_first_filtered = np.log(2) / model_first_filtered.coef_[0]
+td_last_filtered = np.log(2) / model_last_filtered.coef_[0]
+
+fig, ax = plt.subplots(figsize=(10, 6))
+ax.plot(Xfirst_filtered, np.exp(yfirst_filtered), 'o', label='Actual (First 10 Years)')
+ax.plot(Xfirst_filtered, np.exp(model_first_filtered.predict(Xfirst_filtered)), c = 'blue', alpha = 0.3, label=f'Predicted (First 10 Years). Doubling Time: {td_first_filtered:.2f} years')
+ax.plot(Xlast_filtered, np.exp(ylast_filtered), 'o', label='Actual (Last 10 Years)')
+ax.plot(Xlast_filtered, np.exp(model_last_filtered.predict(Xlast_filtered)), c = 'red', alpha = 0.3, label=f'Predicted (Last 10 Years). Doubling Time: {td_last_filtered:.2f} years')
+ax.set_yscale('log')
+ax.set_ylabel('Transistor Count - Log Scale')
+ax.set_xlabel('Year')
+ax.legend()
+fig.show()
+```
+
+The new doubling times are similar to the previous ones, which indicates that the outliers do not have a significant impact on the estimation of the doubling time. 
+
+## Problem 3: Row vs column order data access (25 points)
+In this problem, you will explore the performance differences between row-major and column-major data access patterns using NumPy arrays. Perform the following tasks:
+
+1. Create a large 2D NumPy array (e.g., 10,000 x 10,000) filled with random numbers from a distribution of your choosing.
+2. Implement two functions to compute the sum of all elements in the array using python loops:
+   - One function that accesses the array in row-major order.
+   - Another function that accesses the array in column-major order.
+3. Measure and compare the execution time of both functions using the `time` module or `timeit` library. Make sure to repeat the measurements multiple times (at least 30) to get an average execution time.
+4. Compare the performance results to using built in NumPy functions for summing the array. Explain the differences in performance you observe, using concepts such as cache locality and memory access patterns.
+
+```{python}
+#| echo: false
+#| message: false
+#| warning: false
+val = np.random.rand(10000*10000)
+shape = (10000, 10000)
+row_major = np.array(val).reshape(shape, order='C')
+col_major = np.array(val).reshape(shape, order='F')
+l = []
+
+for _ in range(30):
+    vals = np.random.rand(10000,10000)
+    row_major = np.ascontiguousarray(vals)
+    col_major = np.asfortranarray(vals)
+    r_ini = time.time()
+    row_major.sum()
+    r_end = time.time()
+    c_ini = time.time()
+    col_major.sum()
+    c_end = time.time()
+    l.append({'rm': r_end - r_ini, 'cm': c_end - c_ini})
+
+df = pd.DataFrame(l)
+```
+
+Histograms of the execution times for row-major and column-major access patterns:
+
+```{python}
+#| echo: false
+#| message: false
+#| warning: false
+#| figure: true
+#| fig-cap: "Execution Time Distribution for Row-Major and Column-Major Access Patterns"
+plt.hist(df['rm'], alpha=0.5, label='Row Major', range=(0,0.15))
+plt.hist(df['cm'], alpha=0.5, label='Column Major', range=(0,0.15))
+plt.xlabel('Time (seconds)')
+plt.ylabel('Frequency')
+plt.title('Histogram of Summation Times for Row Major vs Column Major')
+plt.legend()
+plt.show()
+```
+
+Finally, the statistics of the execution times for both access patterns:
+
+```{python}
+#| echo: false
+#| message: false
+#| warning: false
+Markdown(df.describe().to_markdown())
+```
+
+Both the histogram and the statistics show that the execution times for row-major access are generally lower than those for column-major access. This performance difference can be attributed to cache locality and memory access patterns. NumPy arrays are stored in row-major order by default, which means that elements in the same row are stored contiguously in memory. When we access the array in row-major order, we take advantage of spatial locality, which allows the CPU to efficiently load data into the cache.
+
+## Problem 4: Scaling and parallel computing (25 points)
+
+In this problem, you will use Dask arrays to compute the element-wise standard score (z-score normalization) of a large random array and measure the scaling behavior across 1-4 CPU cores. The z-score is computed as: z = (x - μ) / σ, where μ is the mean and σ is the standard deviation.
+
+Perform the following tasks:
+
+1. Create a function that generates a large Dask array filled with random numbers and computes the z-score normalized array.
+2. **Strong scaling**: Fix the array size (e.g., 20,000 x 20,000) and measure execution time using 1, 2, 3, and 4 cores. Calculate the speedup S(p) = T(1)/T(p) and efficiency E(p) = S(p)/p. Plot execution time vs number of cores.
+3. **Weak scaling**: Scale the array size proportionally with the number of cores (maintaining constant work per core). Measure execution time for 1-4 cores and plot the results.
+4. Discuss your results: Does your implementation achieve good scaling? What factors limit the speedup?
+
+**Hint**: Configure the number of workers using `dask.config.set(num_workers=n)` and use `.compute()` to trigger computation.
+
+Code for the process:
+
+```{python}
+SCHEDULER = "processes"
+
+def strong_scaling(t1, tp):
+    return t1 / tp
+
+def efficiency(t1, tp, p):
+    return strong_scaling(t1, tp) / p
+
+def experiment(chunks=(2000, 2000)):
+    x = da.random.random((20000, 20000), chunks=chunks)
+    return zscore(x)
+
+results = []
+
+for p in range(1, 5):
+
+    with dask.config.set(
+        scheduler=SCHEDULER,
+        num_workers=p
+    ):
+        t_ini = time.perf_counter()
+        array = experiment()
+        array.compute()
+        t_total = time.perf_counter() - t_ini
+
+    results.append({"p": p, "t_total": t_total})
+
+df = pd.DataFrame(results)
+```
+
+```{python}
+#| echo: false
+#| message: false
+#| warning: false
+#| figure: true
+#| fig-cap: "Total Time vs Number of Workers"
+plt.plot(df['p'], df['t_total'], marker='o')
+plt.xlabel('Number of Workers (p)')
+plt.ylabel('Total Time (seconds)')
+plt.title('Total Time vs Number of Workers')
+```
+
+```{python}
+#| echo: false
+#| message: false
+#| warning: false
+#| figure: true
+#| fig-cap: "Speedup vs Number of Workers"
+
+plt.plot(df['p'], strong_scaling(df['t_total'][0], df['t_total']), marker='o')
+plt.xlabel('Number of Workers (p)')
+plt.ylabel('Speedup (T1/Tp)')
+plt.title('Speedup vs Number of Workers')
+```
+
+```{python}
+#| echo: false
+#| message: false
+#| warning: false
+#| figure: true
+#| fig-cap: "Efficiency vs Number of Workers"
+
+plt.plot(df['p'], efficiency(df['t_total'][0], df['t_total'], df['p']), marker='o')
+plt.xlabel('Number of Workers (p)')
+plt.ylabel('Efficiency (S(p)/p)')
+plt.title('Efficiency vs Number of Workers')
+```
+
+The results indicates the total processing time decreases (as expected) as the number of workers increases, demonstrating that the implementation achieves good scaling. However, the speedup is not linear, which can be attributed to several factors, like the communication between workers or the nature of the workload. This is also expressed in the efficiency plot, which shows a decrease in efficiency as the number of workers increases. If the workload is not perfectly parallelizable, many tasks could fail. In this case, since the chunk size is fixed, the workload may not be perfectly balanced across workers.
+
+**side note**: I did many tests, and sometimes using 4 cores is slower than 3 cores. Since I'm rendering the document in Quarto, I cannot see the results until I render the document, but I can see the results in the notebook and I have gotten this behavior several times. 
+
