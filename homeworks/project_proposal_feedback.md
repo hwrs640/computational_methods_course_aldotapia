@@ -1,0 +1,3 @@
+# Feedback on the project proposal
+
+I think your overall idea is good and fits with what I know to be your current work. I think you should consider possibly applying the precipitation perturbation over moving windows or similar and then using that to look at the attention matrix. Perhaps something like modifying 7 days of precipitation at different points in the history could be an interesting experiment. Identifying the response for a pre-trained model seems within scope, but you will have to think about how to summarize the data across catchments.
